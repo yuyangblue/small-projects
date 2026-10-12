@@ -7,13 +7,18 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
-from solvers import gauss_elim, cholesky_solve, doolittle_solve, jacobi, gauss_seidel, is_positive_definite
+from solvers import (
+    gauss_elim, cholesky_solve, doolittle_solve, jacobi, gauss_seidel,
+    is_positive_definite, validate_solution,
+)
 
 RESULT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'results')
 os.makedirs(RESULT_DIR, exist_ok=True)
 
 # 设置中文字体
-plt.rcParams['font.sans-serif'] = ['SimHei', 'WenQuanYi Zen Hei', 'Arial Unicode MS']
+plt.rcParams['font.sans-serif'] = [
+    'Noto Sans CJK SC', 'SimHei', 'WenQuanYi Zen Hei', 'Arial Unicode MS'
+]
 plt.rcParams['axes.unicode_minus'] = False
 
 
@@ -40,10 +45,16 @@ def main():
     x_gauss = gauss_elim(A, b)
     x_chol = cholesky_solve(A, b)
     x_dool = doolittle_solve(A, b)
+    direct_solutions = [('Gauss', x_gauss), ('Cholesky', x_chol),
+                        ('Doolittle', x_dool)]
+    direct_validation = {
+        name: validate_solution(A, b, x) for name, x in direct_solutions
+    }
 
     print("\n高斯消去法: x =", x_gauss, " 误差 =", np.linalg.norm(x_gauss - x_star))
     print("Cholesky分解: x =", x_chol, " 误差 =", np.linalg.norm(x_chol - x_star))
     print("Doolittle分解: x =", x_dool, " 误差 =", np.linalg.norm(x_dool - x_star))
+    print("直接法解验证 (通过, 后向误差):", direct_validation)
 
     # 迭代法
     tol = 1e-10
@@ -51,29 +62,40 @@ def main():
 
     x_jac, hist_jac, conv_jac, n_jac = jacobi(A, b, x0, tol, max_iter, x_star)
     x_gs, hist_gs, conv_gs, n_gs = gauss_seidel(A, b, x0, tol, max_iter, x_star)
+    iter_validation = {
+        'Jacobi': validate_solution(A, b, x_jac),
+        'Gauss-Seidel': validate_solution(A, b, x_gs),
+    }
 
     print("\nJacobi迭代: 收敛=%s, 次数=%d" % (conv_jac, n_jac))
     print("  最终解 x =", x_jac)
     print("  残差 =", hist_jac[-1][2], " 误差 =", hist_jac[-1][3])
+    print("  解验证 (通过, 后向误差) =", iter_validation['Jacobi'])
 
     print("\nGauss-Seidel迭代: 收敛=%s, 次数=%d" % (conv_gs, n_gs))
     print("  最终解 x =", x_gs)
     print("  残差 =", hist_gs[-1][2], " 误差 =", hist_gs[-1][3])
+    print("  解验证 (通过, 后向误差) =", iter_validation['Gauss-Seidel'])
 
     # 保存直接法结果
     with open(os.path.join(RESULT_DIR, 'direct_methods_results.csv'), 'w', newline='') as f:
         w = csv.writer(f)
-        w.writerow(['method', 'x1', 'x2', 'x3', 'x4', 'x5', 'x6', 'x7', 'error'])
-        for name, xs in [('Gauss', x_gauss), ('Cholesky', x_chol), ('Doolittle', x_dool)]:
-            w.writerow([name] + list(xs) + [np.linalg.norm(xs - x_star)])
+        w.writerow(['method', 'x1', 'x2', 'x3', 'x4', 'x5', 'x6', 'x7',
+                    'error', 'backward_error', 'valid'])
+        for name, xs in direct_solutions:
+            valid, backward_error = direct_validation[name]
+            w.writerow([name] + list(xs) + [np.linalg.norm(xs - x_star),
+                                            backward_error, valid])
 
     # 保存迭代历史
     for name, hist in [('jacobi', hist_jac), ('gauss_seidel', hist_gs)]:
         with open(os.path.join(RESULT_DIR, name + '_history.csv'), 'w', newline='') as f:
             w = csv.writer(f)
-            w.writerow(['k', 'x1', 'x2', 'x3', 'x4', 'x5', 'x6', 'x7', 'residual', 'error'])
+            w.writerow(['k', 'x1', 'x2', 'x3', 'x4', 'x5', 'x6', 'x7',
+                        'residual', 'error', 'backward_error', 'valid'])
             for k, xk, res, err in hist:
-                w.writerow([k] + list(xk) + [res, err])
+                valid, backward_error = validate_solution(A, b, xk)
+                w.writerow([k] + list(xk) + [res, err, backward_error, valid])
 
     # 画误差曲线
     fig, ax = plt.subplots(figsize=(10, 7))

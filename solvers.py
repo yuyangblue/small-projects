@@ -1,6 +1,31 @@
 import numpy as np
 
 
+def validate_solution(A, b, x, tol=1e-8):
+    A = np.asarray(A, dtype=np.float64)
+    b = np.asarray(b, dtype=np.float64)
+    x = np.asarray(x, dtype=np.float64)
+
+    if A.ndim != 2 or A.shape[0] != A.shape[1] or A.shape[0] == 0:
+        raise ValueError("A must be a square matrix")
+    n = A.shape[0]
+    if b.shape != (n,):
+        raise ValueError("b must be a vector matching A")
+    if not np.isfinite(tol) or tol < 0:
+        raise ValueError("tol must be finite and non-negative")
+    if not np.all(np.isfinite(A)) or not np.all(np.isfinite(b)):
+        raise ValueError("A and b must contain only finite values")
+    if x.shape != (n,) or not np.all(np.isfinite(x)):
+        return False, float('inf')
+
+    residual_norm = np.linalg.norm(A @ x - b, ord=np.inf)
+    scale = (np.linalg.norm(A, ord=np.inf) * np.linalg.norm(x, ord=np.inf)
+             + np.linalg.norm(b, ord=np.inf))
+    backward_error = residual_norm / scale if scale else residual_norm
+    valid = np.isfinite(backward_error) and backward_error <= tol
+    return bool(valid), float(backward_error)
+
+
 def forward_sub(L, b):
     L = np.asarray(L, dtype=np.float64)
     b = np.asarray(b, dtype=np.float64)
@@ -80,6 +105,8 @@ def gauss_elim(A, b):
         if pivot != k:
             A[[k, pivot]] = A[[pivot, k]]
             b[[k, pivot]] = b[[pivot, k]]
+        if A[k, k] == 0:
+            raise np.linalg.LinAlgError("Matrix is singular")
         factors = A[k + 1:, k] / A[k, k]
         A[k + 1:, k:] -= np.outer(factors, A[k, k:])
         b[k + 1:] -= factors * b[k]
@@ -102,16 +129,20 @@ def is_positive_definite(A):
 
 
 def cholesky_solve(A, b):
-    n = len(b)
     A = np.array(A, dtype=np.float64).copy()
     b = np.array(b, dtype=np.float64).copy()
 
-    if not is_positive_definite(A):
+    if A.ndim != 2 or A.shape[0] != A.shape[1]:
+        raise ValueError("A must be a square matrix")
+    if not np.allclose(A, A.T):
         raise np.linalg.LinAlgError("A is not symmetric positive definite")
 
+    n = A.shape[0]
     L = np.zeros((n, n))
     for j in range(n):
         s = A[j, j] - L[j, :j] @ L[j, :j]
+        if not np.isfinite(s) or s <= 0:
+            raise np.linalg.LinAlgError("A is not symmetric positive definite")
         L[j, j] = np.sqrt(s)
         L[j + 1:, j] = (A[j + 1:, j] - L[j + 1:, :j] @ L[j, :j]) / L[j, j]
 
@@ -130,6 +161,10 @@ def doolittle_solve(A, b):
     for k in range(n):
         U[k, k:] = A[k, k:] - L[k, :k] @ U[:k, k:]
         if k < n - 1:
+            if U[k, k] == 0:
+                raise np.linalg.LinAlgError(
+                    "Zero pivot in Doolittle decomposition; pivoting is required"
+                )
             L[k + 1:, k] = (A[k + 1:, k] - L[k + 1:, :k] @ U[:k, k]) / U[k, k]
 
     z = forward_sub(L, b)
@@ -144,6 +179,8 @@ def jacobi(A, b, x0=None, tol=1e-10, max_iter=10000, x_star=None):
     x = np.zeros(n) if x0 is None else np.array(x0, dtype=np.float64).copy()
 
     D = np.diag(A).copy()
+    if np.any(D == 0):
+        raise np.linalg.LinAlgError("Jacobi iteration requires non-zero diagonal entries")
     R = A - np.diag(D)
     b_norm = np.linalg.norm(b)
     history = []
@@ -158,7 +195,7 @@ def jacobi(A, b, x0=None, tol=1e-10, max_iter=10000, x_star=None):
         history.append((k, x_new.copy(), res_norm, err))
         x = x_new
         n_iter = k + 1
-        if res_norm / b_norm <= tol:
+        if res_norm <= tol * b_norm:
             converged = True
             break
 
@@ -186,7 +223,7 @@ def gauss_seidel(A, b, x0=None, tol=1e-10, max_iter=10000, x_star=None):
         history.append((k, x_new.copy(), res_norm, err))
         x = x_new
         n_iter = k + 1
-        if res_norm / b_norm <= tol:
+        if res_norm <= tol * b_norm:
             converged = True
             break
 
