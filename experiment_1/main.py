@@ -7,7 +7,7 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
-from solvers import gauss_elim, cholesky_solve, doolittle_solve, jacobi, gauss_seidel
+from solvers import gauss_elim, cholesky_solve, doolittle_solve, jacobi, gauss_seidel, is_positive_definite
 
 RESULT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'results')
 os.makedirs(RESULT_DIR, exist_ok=True)
@@ -34,7 +34,7 @@ def main():
 
     print("实验一：线性方程组求解")
     print("A 对称:", np.allclose(A, A.T))
-    print("A 正定:", np.all(np.linalg.eigvalsh(A) > 0))
+    print("A 正定:", is_positive_definite(A))
 
     # 直接法
     x_gauss = gauss_elim(A, b)

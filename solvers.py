@@ -1,13 +1,72 @@
 import numpy as np
-from scipy.linalg import solve_triangular
 
 
 def forward_sub(L, b):
-    return solve_triangular(L, b, lower=True)
+    L = np.asarray(L, dtype=np.float64)
+    b = np.asarray(b, dtype=np.float64)
+
+    if L.ndim != 2 or L.shape[0] != L.shape[1]:
+        raise ValueError("L must be a square matrix")
+
+    n = L.shape[0]
+    if b.ndim == 1:
+        if b.shape[0] != n:
+            raise ValueError("Dimension mismatch between L and b")
+        x = np.empty(n, dtype=np.float64)
+        for i in range(n):
+            s = b[i] - L[i, :i] @ x[:i]
+            if abs(L[i, i]) < np.finfo(np.float64).eps:
+                raise np.linalg.LinAlgError("Matrix is singular or not invertible")
+            x[i] = s / L[i, i]
+        return x
+
+    if b.ndim == 2:
+        if b.shape[0] != n:
+            raise ValueError("Dimension mismatch between L and b")
+        x = np.empty_like(b, dtype=np.float64)
+        for j in range(b.shape[1]):
+            for i in range(n):
+                s = b[i, j] - L[i, :i] @ x[:i, j]
+                if abs(L[i, i]) < np.finfo(np.float64).eps:
+                    raise np.linalg.LinAlgError("Matrix is singular or not invertible")
+                x[i, j] = s / L[i, i]
+        return x
+
+    raise ValueError("b must be a 1D or 2D array")
 
 
 def back_sub(U, b):
-    return solve_triangular(U, b, lower=False)
+    U = np.asarray(U, dtype=np.float64)
+    b = np.asarray(b, dtype=np.float64)
+
+    if U.ndim != 2 or U.shape[0] != U.shape[1]:
+        raise ValueError("U must be a square matrix")
+
+    n = U.shape[0]
+    if b.ndim == 1:
+        if b.shape[0] != n:
+            raise ValueError("Dimension mismatch between U and b")
+        x = np.empty(n, dtype=np.float64)
+        for i in range(n - 1, -1, -1):
+            s = b[i] - U[i, i + 1:] @ x[i + 1:]
+            if abs(U[i, i]) < np.finfo(np.float64).eps:
+                raise np.linalg.LinAlgError("Matrix is singular or not invertible")
+            x[i] = s / U[i, i]
+        return x
+
+    if b.ndim == 2:
+        if b.shape[0] != n:
+            raise ValueError("Dimension mismatch between U and b")
+        x = np.empty_like(b, dtype=np.float64)
+        for j in range(b.shape[1]):
+            for i in range(n - 1, -1, -1):
+                s = b[i, j] - U[i, i + 1:] @ x[i + 1:, j]
+                if abs(U[i, i]) < np.finfo(np.float64).eps:
+                    raise np.linalg.LinAlgError("Matrix is singular or not invertible")
+                x[i, j] = s / U[i, i]
+        return x
+
+    raise ValueError("b must be a 1D or 2D array")
 
 
 def gauss_elim(A, b):
@@ -29,10 +88,26 @@ def gauss_elim(A, b):
     return x
 
 
+def is_positive_definite(A):
+    A = np.asarray(A, dtype=np.float64)
+    if A.ndim != 2 or A.shape[0] != A.shape[1]:
+        raise ValueError("A must be a square matrix")
+    if not np.allclose(A, A.T):
+        return False
+    try:
+        np.linalg.cholesky(A)
+        return True
+    except np.linalg.LinAlgError:
+        return False
+
+
 def cholesky_solve(A, b):
     n = len(b)
     A = np.array(A, dtype=np.float64).copy()
     b = np.array(b, dtype=np.float64).copy()
+
+    if not is_positive_definite(A):
+        raise np.linalg.LinAlgError("A is not symmetric positive definite")
 
     L = np.zeros((n, n))
     for j in range(n):
